@@ -1,0 +1,251 @@
+/* 2017-05-26
+(C) A.Domarkas */
+
+laplacian(f,v):=block(sum(diff(f,v[k],2),k,1,length(v)))$
+
+Laplacian(f,v,k):=block([],
+if k=1 then laplacian(f,v)
+else laplacian(Laplacian(f,v,k-1),v)
+)$
+
+solveLHpde(eq,u,vars):=block([N,n,_L,dvars],
+    local(linearp),
+    n:length(vars),
+    dvars:makelist(D[vars[k]],k,1,n),
+    linearp(L):=block(
+create_list(diff(L,dvars[i],1,dvars[j],1),i,1,n,j,1,n),
+emptyp(sublist(%%,lambda([x],x#0)))),
+    N:0,
+    if  not freeof(diff,eq) then
+    c2D(eq) else eq,
+    part(lhs(%%),0),
+    _L:gfactor(%%),
+    if op(_L)="-" then _L:-_L,
+    if op(_L)="+" or op(_L)=D and linearp(_L)
+    or op(_L)="^" and linearp(part(_L,1))
+    then [_L] else
+    makelist(part(_L,k),k,1,length(_L)), 
+    map(solve1e,%%),
+    apply("+",%%))$
+
+solve1e(L):=block([T,m,cf,c0,sol,vars1,vars2,dvars1,n1],    
+if constantp(L) then return(0),
+dvars1:sublist(listofvars(L),lambda([x],member(x,dvars))),
+n1:length(dvars1),   
+vars1:makelist(part(dvars1[k],1),k,1,n1),
+vars2:sublist(vars,lambda([_x],not member(_x,vars1))),        
+if op(L)="^" then [T,m]:[part(L,1),part(L,2)]   
+else [T,m]:[L,1],
+cf:makelist(coeff(T,dvars1[k]),k,1,n1),
+c0:subst(makelist(dvars1[k]=0,k,1,n1),T),
+if (n=1 and n1=1) then (makelist(concat(C,k),k,1,m),
+sol:sum(vars1[1]^(i-1)*%%[i]*exp(-c0*vars1[1]/cf[1]),i,1,m),return(sol))   
+else makelist(vars2[k],k,1,n-n1), 
+append(%%, makelist(cf[1]*vars1[k]-cf[k]*vars1[1],k,2,n1)),  
+if freeof(%i,%%) then %%*signum(cf[1]) else -%%,               
+sol:sum(vars1[1]^(i-1)*funmake(concat(f,i+N),%%)*exp(-c0*vars1[1]/cf[1]),i,1,m),    
+N:N+m,
+return(sol)    
+)$
+
+testDE(eq,u,sol):=block([rez,eq1],
+eq1:c2diff(eq),    
+load(pdiff),    
+subst(u=sol,eq1),   
+ev(lhs(%%)-rhs(%%), nouns),      
+exponentialize(%%),
+rez:ratsimp(expand(%%)),
+reset(use_pdiff),
+return(rez)            
+)$
+
+c2diff(eq):=block([L,n,dvars,vars],
+if not freeof(diff,eq) then return(eq),    
+L:part(lhs(expand(eq)),0),
+listofvars(L),           
+dvars:sublist(%%,lambda([x],not freeof(D,x))),       
+n:length(dvars),
+vars:makelist(part(dvars[k],1),k,1,n),
+local(g),
+g(s):=block([c,pow,t],
+c:subst(makelist(dvars[k]=1,k,1,n),s),     
+pow:makelist(hipow(s,dvars[k]),k,1,n),
+t:u,
+for k thru n do t:'diff(t,vars[k],pow[k]),
+c*t),
+L:part(lhs(expand(eq)),0),
+if freeof("=",eq) then map(g,L) else map(g,L)=rhs(eq))$
+
+c2D(eq):=block([ar],
+reset(use_pdiff),    
+if not freeof(D,eq) then return(eq),    
+local(cD,list_of_derivatives),    
+cD(f):=block(   
+        args(f),
+        prod(D[%%[2*k]]^%%[2*k+1],k,1,length(%%)/2)),
+list_of_derivatives(x) := block([result : []], 
+        scanmap(lambda([x], if not atom(x) and op(x) = op(diff('f('x), 'x)) 
+        then result : endcons(x, result), x), x), result),
+ar: list_of_derivatives(eq),   
+makelist(%%[k]=cD(%%[k]),k,1,length(%%)),
+endcons(args(ar[1])[1]=1,%%),    
+subst(%%,lhs(eq))(args(ar[1])[1])=rhs(eq)        
+)$
+
+D(f,x,k):=block([],
+    locsl(int),
+    int(f,x,k):=block([],
+            if k=1 then integrate(f,x)
+            else integrate(int(f,x,k-1),x)),
+    if k>=0 then diff(f,x,k)
+    else  int(f,x,-k) )$
+
+evD(expr):=block([L,n,dvars,vars],
+L:op(expr),
+listofvars(L),           
+dvars:sublist(%%,lambda([x],not freeof(D,x))),       
+n:length(dvars),
+vars:makelist(part(dvars[k],1),k,1,n),
+local(g),
+g(s):=block([c,pow,t],
+c:subst(makelist(dvars[k]=1,k,1,n),s),     
+pow:makelist(hipow(s,dvars[k]),k,1,n),
+t:part(expr,1), 
+for k thru n do t:D(t,vars[k],pow[k]),
+c*t),
+if op(L)="+" then sum(g(part(L,k)),k,1,length(L)) else g(L))$
+
+polsol(eq,u,vars):=block([n,m],
+n:length(vars),
+m:lmax(makelist(hipow(eq,vars[k]),k,1,n))+sum(derivdegree(eq,u,vars[k]),k,1,n),
+if  not freeof(diff,eq) then c2D(eq) else eq,
+part(lhs(%%),0),
+taylor(1/%%,dvars,0,m),
+expand(%%),
+%%(rhs(eq)),
+evD(%%)       
+)$
+
+ppsol(eq,u,vars):=block([n,dvars,r,e,m,u_p,Li],
+n:length(vars),
+dvars:makelist(D[vars[k]],k,1,n),             
+r:rhs(eq),    
+if  not freeof(diff,eq) then c2D(eq) else eq,
+L:part(lhs(%%),0),
+e:makelist(diff(r,vars[k])/r,k,1,n),    
+if lfreeof(vars, e) then 
+(
+m:0,
+for k:0 while at(diff(L,D[x],k),makelist(dvars[k]=e[k],k,1,n))=0
+do m:m+1,
+u_p:x^m*r/at(diff(L,D[x],m),makelist(dvars[k]=e[k],k,1,n))
+)
+else        
+(Li:1/L,
+for k in vars do Li:taylor(Li,D[k],0,hipow(r,k)),
+(Li)(r),    
+u_p:evD(%%)),
+return(u_p)       
+)$
+
+solveCPpde(eq,u,ic):=block([vars,vars1,v,s,r1,r2],    
+vars:args(u),    
+n:length(vars),    
+vars1:makelist(vars[k],k,1,n-1),
+_t:vars[n],        
+laplace(eq,_t,s),
+subst(ic,%%),
+subst(laplace(u,_t,s)=v,%%),
+rhs(%%)-lhs(%%),
+ls:makelist(part(%%,k),k,1,length(%%)),
+r1:sublist(ls,lambda([x],freeof(v,x))),
+r2:sublist(ls,lambda([x],not freeof(v,x))),
+apply("+",r2)=-apply("+",r1),
+partsolpde(%%,v,vars1),
+expand(%%),
+ilt(%%,s,_t),
+expand(%%)
+)$
+
+ps1s(eq,u,vars):=block([f,L,n,dvars,n1,T],
+        f:rhs(eq),
+        if  not freeof(diff,eq) then c2D(eq) else eq,    
+        L:part(lhs(%%),0),
+        n:length(vars),    
+        dvars:makelist(D[vars[k]],k,1,n),
+        n1:sum(hipow(f,vars[k]),k,1,n)+1,
+    T:1/L,
+    for k thru n
+    do T:taylor(T,dvars[k],0,n1),
+    evD(T(f))
+)$
+
+ps1(eq,u,vars):=block([L,Li],
+    c2D(eq),
+    L:op(lhs(%%)),
+    Li:1/L,
+    for k in vars do 
+    Li:expand(taylor(Li,D[k],0,max(hipow(rhs(eq),k),1))),
+    Li(rhs(eq)),
+    evD(%%))$
+
+ps2(eq,u,vars):=block([eq1,r,cf,ex,w],
+    eq1:c2diff(eq),
+    r:rhs(eq1),
+    cf:subst(%e=1,r),
+    ex:r/cf,
+    depends(w,vars),
+    subst(u=w*ex,eq1),
+    ev(%%,nouns),            
+    expand(%%/ex),
+    if lfreeof(cons(w,vars),rhs(%%)) then ps3(%%,w,vars) else ps1(%%,w,vars),
+    %%*ex,
+    rectform(%%),
+    ratsimp(%%)
+)$
+
+ps3(eq,u,vars):=block([r,n,eq1,dvars,L,L0],
+r:rhs(eq),
+n:length(vars),
+dvars:makelist(D[vars[k]],k,1,n),        
+eq1:c2D(eq),
+op(lhs(eq1)),
+cons(%%,dvars),
+funmake(collectterms,%%),
+L:ev(%%, nouns),
+if op(L)="+" then   L1:last(makelist(part(L,k),k,1,length(L))) else L1:L,
+L0:ev(L,makelist(dvars[k]=0,k,1,n)),
+if lfreeof(dvars,L0) and L0#0 then r/L0 else evD((1/L1)(r))              
+)$ 
+
+partsolpde(eq,u,vars):=block([r,eq1,eqs,ff,S1,F,sol],
+eq1:convert2st(eq,u,vars),        
+exponentialize(eq1),
+expand(%%),
+r:rhs(%%),
+if atom(r) or op(r)#"+" then eqs:[eq1]     
+else    
+eqs:makelist(lhs(eq1)=part(r,k),k,1,length(r)),        
+ff:map(rhs,eqs),
+S1:0, F:0,
+for k thru length(eqs) do
+if freeof(%e,ff[k]) then F:F+ff[k]
+else  S1:S1+ps2(eqs[k],u,vars),
+if F=0 then sol:S1 else sol:S1+ps1(lhs(eq1)=F,u,vars),
+expand(sol),
+rectform(%%)
+)$
+
+convert2st(eq,u,vars):=block([ls,r1,r2],
+expand(rhs(eq)-lhs(eq)),
+ls:makelist(part(%%,k),k,1,length(%%)),
+r1:sublist(ls,lambda([x],freeof(u,x))),
+r2:sublist(ls,lambda([x],not freeof(u,x))),
+apply("+",r2)=-apply("+",r1)
+)$
+
+solveLpde(eq,u,vars):=block([],
+partsolpde(eq,u,vars)+solveLHpde(eq,u,vars)
+)$
+
+
