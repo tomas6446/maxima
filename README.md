@@ -1,1 +1,2 @@
-# Informatics 3 semester VU mathematical modeling solved tasks for maxima 
+# maxima (not shop)
+Informatics 3 semester VU mathematical modeling solved tasks for maxima 
